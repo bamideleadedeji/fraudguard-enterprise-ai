@@ -127,3 +127,32 @@ elif view == "Risk Log":
 
 st.sidebar.markdown("---")
 st.sidebar.caption("FraudGuard AI v2.5 - Enterprise Edition")
+
+elif view == "About":
+    st.title(" About FraudGuard AI Enterprise")
+    
+    st.subheader("The Mission")
+    st.write("""
+    FraudGuard AI is an advanced middleware solution designed for high-growth Fintechs. 
+    Our platform replaces traditional, rigid rule-based systems with dynamic Machine Learning 
+    to reduce revenue leakage and improve customer experience.
+    """)
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write("###  Core Value Proposition")
+        st.write("- **Zero-Latency Scoring:** Process transactions in under 15ms.")
+        st.write("- **Lower False Positives:** Keep legitimate customers transacting.")
+        st.write("- **Adaptive Learning:** The model evolves with new fraud patterns.")
+
+    with col_b:
+        st.write("###  Technical Architecture")
+        st.write("- **Engine:** Random Forest Ensemble Classifier.")
+        st.write("- **Data Source:** Real-time API / SQL Stream Integration.")
+        st.write("- **Security:** End-to-end encrypted analytical pipeline.")
+
+    st.divider()
+    st.write("###  Contact for Enterprise Integration")
+    st.write("**Developer:** Bamidele Adedeji")
+    st.write("**Specialization:** Financial Econometrics & Machine Learning")
+    st.info("For custom deployment on Azure, AWS, or local infrastructure, please reach out via the GitHub repository.")
