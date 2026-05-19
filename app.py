@@ -76,7 +76,7 @@ feat_cols = ['amount', 'hour_of_day', 'channel_USSD', 'channel_Mobile_App', 'use
 feature_importances = [0.38, 0.22, 0.18, 0.11, 0.07, 0.04]
 
 # --- SIDEBAR INTERFACE ---
-st.sidebar.title(" FraudGuard AI")
+st.sidebar.title("🛡️ FraudGuard AI")
 st.sidebar.caption("Enterprise Middleware v2.5")
 st.sidebar.markdown("---")
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log", "Technical Documentation"])
@@ -145,7 +145,7 @@ elif view == "Threat Intelligence Log":
     st.title(" High-Risk Transaction Audit Ledger")
     
     if is_client_profile:
-        # Match real data precisely to the verified 38 anomalies from your file
+        # Match real data precisely to the verified alerts from your file
         high_risk = df[df['is_fraud'] == 1].copy()
         if 'risk_score' not in high_risk.columns:
             high_risk['risk_score'] = 0.9412
