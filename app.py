@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import os
+import io
+from google.cloud import storage
 
 # --- ARCHITECTURAL CONFIGURATION ---
 st.set_page_config(page_title="FraudGuard AI | Enterprise Edition", layout="wide", page_icon="🛡️")
@@ -19,48 +21,78 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ENTERPRISE DATA LINK LAYER ---
-# This allows you to store multiple clients cleanly in your folder without overwriting!
+# --- ENTERPRISE CLOUD STORAGE LINK LAYER ---
+BUCKET_NAME = "fraudguard-enterprise-vault-bamidele"
+LOCAL_KEY_PATH = "fraudguard-enterprise-core-944685c7539e.json"
+
+# Dynamic Mapping to Cloud Paths
 AVAILABLE_AUDITS = {
-    "Dejifolakemi Enterprises (Poultry 2020-2021)": "2026-05-21T20-59_export.csv",
-    "Dejifolakemi Enterprises (Poultry 2025-2026)": "2026-05-17T17-30_export.csv",
-    "Sterling Bank Audit Ledger (Personal)": "2026-05-22T13-01_export.csv"
+    "Dejifolakemi Enterprises (Poultry 2020-2021)": "client_001_dejifolakemi_poultry/2026-05-21T20-59_export.csv",
+    "Dejifolakemi Enterprises (Poultry 2025-2026)": "client_001_dejifolakemi_poultry/2026-05-17T17-30_export.csv",
+    "Sterling Bank Audit Ledger (Personal)": "client_002_sterling_personal/2026-05-22T13-01_export.csv"
 }
 
-st.sidebar.subheader(" Select Active Client Profile")
-selected_client = st.sidebar.selectbox("Active Engagement", list(AVAILABLE_AUDITS.keys()))
-CLIENT_DATA_FILE = AVAILABLE_AUDITS[selected_client]
+st.sidebar.subheader(" Active Cloud Engagement")
+selected_client = st.sidebar.selectbox("Select Active Client Profile", list(AVAILABLE_AUDITS.keys()))
+CLOUD_DATA_PATH = AVAILABLE_AUDITS[selected_client]
+
+@st.cache_resource
+def initialize_gcs_client():
+    """
+    Establishes secure credential bridge to Google Cloud Storage.
+    Detects local JSON key file for testing, falls back to secure st.secrets in cloud production.
+    """
+    try:
+        if os.path.exists(LOCAL_KEY_PATH):
+            return storage.Client.from_service_account_json(LOCAL_KEY_PATH)
+        else:
+            # Production environment: Parse credentials directly from Streamlit secure cloud vault
+            import json
+            gcreds_dict = dict(st.secrets["gcp_service_account"])
+            return storage.Client.from_service_account_info(gcreds_dict)
+    except Exception as e:
+        st.error(f" Encryption Credential Failure: Could not build connection to Google Cloud. Details: {e}")
+        return None
 
 @st.cache_data
-def ingest_real_audit_matrix(file_path):
+def ingest_cloud_audit_matrix(file_path):
     """
-    Direct Injection Core: Reads the specific client ledger dynamically.
+    Direct Cloud Ingestion: Downloads isolated client files straight from your secure GCS Bucket.
     """
-    if not os.path.exists(file_path):
-        st.error(f"Critical Infrastructure Failure: Data asset file '{file_path}' was not detected!")
+    client = initialize_gcs_client()
+    if client is None:
         return pd.DataFrame()
     
-    df_raw = pd.read_csv(file_path)
-    
-    if 'timestamp' in df_raw.columns:
-        df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], errors='coerce')
-    
-    if 'risk_score' in df_raw.columns:
-        df_raw['risk_score'] = pd.to_numeric(df_raw['risk_score'], errors='coerce').fillna(0.1500)
-        df_raw['is_fraud'] = np.where(df_raw['risk_score'] > 0.85, 1, 0)
-    else:
-        df_raw['risk_score'] = 0.1500
-        df_raw['is_fraud'] = 0
+    try:
+        bucket = client.bucket(BUCKET_NAME)
+        blob = bucket.blob(file_path)
+        
+        # Download data as text memory stream
+        csv_data = blob.download_as_text()
+        df_raw = pd.read_csv(io.StringIO(csv_data))
+        
+        if 'timestamp' in df_raw.columns:
+            df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], errors='coerce')
+        
+        if 'risk_score' in df_raw.columns:
+            df_raw['risk_score'] = pd.to_numeric(df_raw['risk_score'], errors='coerce').fillna(0.1500)
+            df_raw['is_fraud'] = np.where(df_raw['risk_score'] > 0.85, 1, 0)
+        else:
+            df_raw['risk_score'] = 0.1500
+            df_raw['is_fraud'] = 0
 
-    if 'amount' in df_raw.columns:
-        df_raw['amount'] = pd.to_numeric(df_raw['amount'], errors='coerce').fillna(0.0)
-    else:
-        df_raw['amount'] = 0.0
+        if 'amount' in df_raw.columns:
+            df_raw['amount'] = pd.to_numeric(df_raw['amount'], errors='coerce').fillna(0.0)
+        else:
+            df_raw['amount'] = 0.0
 
-    return df_raw
+        return df_raw
+    except Exception as e:
+        st.error(f" Cloud Ingestion Interrupted: Target element '{file_path}' was not found in your bucket. Verify your bucket file locations.")
+        return pd.DataFrame()
 
-# --- EXECUTE INGESTION DYNAMICALLY ---
-df = ingest_real_audit_matrix(CLIENT_DATA_FILE)
+# --- EXECUTE INGESTION DYNAMICALLY FROM GOOGLE CLOUD ---
+df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH)
 
 # --- HARDENED PERFORMANCE MODEL INTEGRITY METRICS ---
 PRE_TUNED_PRECISION = 1.0000
@@ -76,12 +108,12 @@ feature_importances = [0.45, 0.25, 0.15, 0.10, 0.05]
 
 # --- SIDEBAR CONTROL PANEL ---
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Enterprise Middleware v2.5")
+st.sidebar.caption("Enterprise Middleware v3.0 (Cloud Native)")
 st.sidebar.markdown("---")
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log", "Technical Documentation"])
 
 if df.empty:
-    st.warning("Waiting for data ingestion file initialization link...")
+    st.warning(" Access Layer Active: Waiting for verification of your secure Google Cloud storage datastream integration...")
 else:
     # GLOBAL VARIABLE DEFINITIONS: Available across all dashboard tabs
     high_risk = df.sort_values('risk_score', ascending=False)
@@ -90,7 +122,7 @@ else:
 
     if view == "Executive Summary":
         st.title("System Health & Excess Charge Overview")
-        st.success(f"LIVE AUDIT DATASTREAM ACTIVE: Connected to [ {CLIENT_DATA_FILE} ]")
+        st.success(f"☁️ GOOGLE CLOUD STORAGE STREAMING: Connected securely to bucket path [ gs://{BUCKET_NAME}/{CLOUD_DATA_PATH} ]")
             
         c1, c2, c3, c4 = st.columns(4)
         
@@ -146,7 +178,6 @@ else:
         st.title("CBN Excess Charge Recovery Ledger")
         st.write(f"Displaying {len(charges_pool)} specific banking fee lines breaching established CBN cost-recovery guidelines.")
         
-        # Safe column extraction list based on verified columns across your portfolios
         available_cols = [col for col in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if col in charges_pool.columns]
         
         st.dataframe(
@@ -191,4 +222,4 @@ else:
         st.info("Direct implementation queries can be routed through the secure project repository on GitHub.")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("© 2026 FraudGuard AI Enterprise")
+st.sidebar.caption("© 2026 FraudGuard AI Enterprise Cloud")
