@@ -20,26 +20,31 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- ENTERPRISE DATA LINK LAYER ---
-CLIENT_DATA_FILE = "2026-05-17T17-30_export.csv"
+# This allows you to store multiple clients cleanly in your folder without overwriting!
+AVAILABLE_AUDITS = {
+    "Dejifolakemi Enterprises (Poultry 2020-2021)": "2026-05-21T20-59_export.csv",
+    "Dejifolakemi Enterprises (Poultry 2025-2026)": "2026-05-17T17-30_export.csv",
+    "Sterling Bank Audit Ledger (Personal)": "2026-05-22T13-01_export.csv"
+}
+
+st.sidebar.subheader(" Select Active Client Profile")
+selected_client = st.sidebar.selectbox("Active Engagement", list(AVAILABLE_AUDITS.keys()))
+CLIENT_DATA_FILE = AVAILABLE_AUDITS[selected_client]
 
 @st.cache_data
-def ingest_real_audit_matrix():
+def ingest_real_audit_matrix(file_path):
     """
-    Direct Injection Core: Reads the unzipped compliance output ledger directly from disk
-    and builds explicit structural tracking fields.
+    Direct Injection Core: Reads the specific client ledger dynamically.
     """
-    if not os.path.exists(CLIENT_DATA_FILE):
-        st.error(f" Critical Infrastructure Failure: Data asset file '{CLIENT_DATA_FILE}' was not detected in the root repository folder!")
+    if not os.path.exists(file_path):
+        st.error(f"Critical Infrastructure Failure: Data asset file '{file_path}' was not detected!")
         return pd.DataFrame()
     
-    # Read real generated data asset
-    df_raw = pd.read_csv(CLIENT_DATA_FILE)
+    df_raw = pd.read_csv(file_path)
     
-    # Standardize column parsing matrices
     if 'timestamp' in df_raw.columns:
         df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], errors='coerce')
     
-    # Define hard anomalies directly derived from your forensic logic threshold (0.85)
     if 'risk_score' in df_raw.columns:
         df_raw['risk_score'] = pd.to_numeric(df_raw['risk_score'], errors='coerce').fillna(0.1500)
         df_raw['is_fraud'] = np.where(df_raw['risk_score'] > 0.85, 1, 0)
@@ -54,8 +59,8 @@ def ingest_real_audit_matrix():
 
     return df_raw
 
-# --- EXECUTE INGESTION ---
-df = ingest_real_audit_matrix()
+# --- EXECUTE INGESTION DYNAMICALLY ---
+df = ingest_real_audit_matrix(CLIENT_DATA_FILE)
 
 # --- HARDENED PERFORMANCE MODEL INTEGRITY METRICS ---
 PRE_TUNED_PRECISION = 1.0000
@@ -76,7 +81,7 @@ st.sidebar.markdown("---")
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log", "Technical Documentation"])
 
 if df.empty:
-    st.warning(" Waiting for data ingestion file initialization link...")
+    st.warning("Waiting for data ingestion file initialization link...")
 else:
     # GLOBAL VARIABLE DEFINITIONS: Available across all dashboard tabs
     high_risk = df.sort_values('risk_score', ascending=False)
@@ -84,8 +89,8 @@ else:
     total_charges_value = charges_pool['amount'].sum()
 
     if view == "Executive Summary":
-        st.title(" System Health & Excess Charge Overview")
-        st.success(f" LIVE AUDIT DATASTREAM ACTIVE: Connected to [ {CLIENT_DATA_FILE} ]")
+        st.title("System Health & Excess Charge Overview")
+        st.success(f"LIVE AUDIT DATASTREAM ACTIVE: Connected to [ {CLIENT_DATA_FILE} ]")
             
         c1, c2, c3, c4 = st.columns(4)
         
@@ -111,8 +116,8 @@ else:
             st.plotly_chart(fig2, use_container_width=True)
 
     elif view == "Quantitative Analytics":
-        st.title(" Model Integrity & KPI Analysis")
-        st.info(" SYSTEMIC AUDIT STABILITY: Structural performance indicators evaluated against targeted transactional data parameters.")
+        st.title("Model Integrity & KPI Analysis")
+        st.info("SYSTEMIC AUDIT STABILITY: Structural performance indicators evaluated against targeted transactional data parameters.")
         
         k1, k2, k3 = st.columns(3)
         k1.metric("Precision (Reliability)", f"{PRE_TUNED_PRECISION:.2%}")
@@ -138,16 +143,19 @@ else:
             st.plotly_chart(fig_imp, use_container_width=True)
 
     elif view == "Threat Intelligence Log":
-        st.title(" CBN Excess Charge Recovery Ledger")
+        st.title("CBN Excess Charge Recovery Ledger")
         st.write(f"Displaying {len(charges_pool)} specific banking fee lines breaching established CBN cost-recovery guidelines.")
         
+        # Safe column extraction list based on verified columns across your portfolios
+        available_cols = [col for col in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if col in charges_pool.columns]
+        
         st.dataframe(
-            charges_pool[['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score']].style.format({"amount": "₦{:,.2f}", "risk_score": "{:.4f}"}),
+            charges_pool[available_cols].style.format({"amount": "₦{:,.2f}", "risk_score": "{:.4f}"}),
             use_container_width=True
         )
 
     elif view == "Technical Documentation":
-        st.title(" FraudGuard Implementation Specs")
+        st.title("FraudGuard Implementation Specs")
         
         st.subheader("Key Performance Indicator (KPI) Definitions")
         col_k1, col_k2 = st.columns(2)
