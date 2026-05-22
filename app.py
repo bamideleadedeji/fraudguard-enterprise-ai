@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import os
 import io
+import json
 from google.cloud import storage
 
 # --- ARCHITECTURAL CONFIGURATION ---
@@ -23,7 +24,6 @@ st.markdown("""
 
 # --- ENTERPRISE CLOUD STORAGE LINK LAYER ---
 BUCKET_NAME = "fraudguard-enterprise-vault-bamidele"
-LOCAL_KEY_PATH = "fraudguard-enterprise-core-944685c7539e.json"
 
 # Dynamic Mapping to Cloud Paths
 AVAILABLE_AUDITS = {
@@ -32,34 +32,40 @@ AVAILABLE_AUDITS = {
     "Sterling Bank Audit Ledger (Personal)": "client_002_sterling_personal/2026-05-22T13-01_export.csv"
 }
 
+st.sidebar.title("🛡️ FraudGuard AI")
+st.sidebar.caption("Enterprise Middleware v3.1 (Secure Local Gateway)")
+st.sidebar.markdown("---")
+
+# SECURE GATEWAY ACCESS LAYER: Upload the JSON key file safely through the UI
+st.sidebar.subheader(" Cloud Authentication Gateway")
+uploaded_key_file = st.sidebar.file_uploader("Upload your Cloud Passport Key (.json)", type=["json"])
+
+st.sidebar.markdown("---")
 st.sidebar.subheader(" Active Cloud Engagement")
 selected_client = st.sidebar.selectbox("Select Active Client Profile", list(AVAILABLE_AUDITS.keys()))
 CLOUD_DATA_PATH = AVAILABLE_AUDITS[selected_client]
 
 @st.cache_resource
-def initialize_gcs_client():
+def initialize_gcs_client(uploaded_file):
     """
-    Establishes secure credential bridge to Google Cloud Storage.
-    Detects local JSON key file for testing, falls back to secure st.secrets in cloud production.
+    Establishes a secure connection to Google Cloud Storage using the uploaded JSON file in memory.
     """
-    try:
-        if os.path.exists(LOCAL_KEY_PATH):
-            return storage.Client.from_service_account_json(LOCAL_KEY_PATH)
-        else:
-            # Production environment: Parse credentials directly from Streamlit secure cloud vault
-            import json
-            gcreds_dict = dict(st.secrets["gcp_service_account"])
-            return storage.Client.from_service_account_info(gcreds_dict)
-    except Exception as e:
-        st.error(f" Encryption Credential Failure: Could not build connection to Google Cloud. Details: {e}")
-        return None
+    if uploaded_file is not None:
+        try:
+            # Read the file data into a dictionary dynamically without ever storing it on disk or GitHub
+            key_data = json.load(uploaded_file)
+            return storage.Client.from_service_account_info(key_data)
+        except Exception as e:
+            st.sidebar.error(f" Key Verification Failed: {e}")
+            return None
+    return None
 
 @st.cache_data
-def ingest_cloud_audit_matrix(file_path):
+def ingest_cloud_audit_matrix(file_path, _key_file_anchor):
     """
     Direct Cloud Ingestion: Downloads isolated client files straight from your secure GCS Bucket.
     """
-    client = initialize_gcs_client()
+    client = initialize_gcs_client(_key_file_anchor)
     if client is None:
         return pd.DataFrame()
     
@@ -67,7 +73,6 @@ def ingest_cloud_audit_matrix(file_path):
         bucket = client.bucket(BUCKET_NAME)
         blob = bucket.blob(file_path)
         
-        # Download data as text memory stream
         csv_data = blob.download_as_text()
         df_raw = pd.read_csv(io.StringIO(csv_data))
         
@@ -88,11 +93,11 @@ def ingest_cloud_audit_matrix(file_path):
 
         return df_raw
     except Exception as e:
-        st.error(f" Cloud Ingestion Interrupted: Target element '{file_path}' was not found in your bucket. Verify your bucket file locations.")
+        st.error(f" Cloud Ingestion Interrupted: Element '{file_path}' was not found. Verify your cloud storage bucket assets.")
         return pd.DataFrame()
 
 # --- EXECUTE INGESTION DYNAMICALLY FROM GOOGLE CLOUD ---
-df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH)
+df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH, uploaded_key_file)
 
 # --- HARDENED PERFORMANCE MODEL INTEGRITY METRICS ---
 PRE_TUNED_PRECISION = 1.0000
@@ -106,13 +111,12 @@ mock_cm = np.array([[max(len(df) - total_fraud_alerts, 0), 0], [0, total_fraud_a
 feat_cols = ['amount', 'hour_of_day', 'channel_OneBank_App', 'channel_Mobile_App', 'user_location_LAGOS_NGR']
 feature_importances = [0.45, 0.25, 0.15, 0.10, 0.05]
 
-# --- SIDEBAR CONTROL PANEL ---
-st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Enterprise Middleware v3.0 (Cloud Native)")
-st.sidebar.markdown("---")
+# --- VIEW MODULES ---
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log", "Technical Documentation"])
 
-if df.empty:
+if uploaded_key_file is None:
+    st.info(" Secure Local Gateway Idle: Please upload your `fraudguard-enterprise-core-944685c7539e.json` key file using the sidebar panel tool to initialize cloud data streaming.")
+elif df.empty:
     st.warning(" Access Layer Active: Waiting for verification of your secure Google Cloud storage datastream integration...")
 else:
     # GLOBAL VARIABLE DEFINITIONS: Available across all dashboard tabs
@@ -122,7 +126,7 @@ else:
 
     if view == "Executive Summary":
         st.title("System Health & Excess Charge Overview")
-        st.success(f"☁️ GOOGLE CLOUD STORAGE STREAMING: Connected securely to bucket path [ gs://{BUCKET_NAME}/{CLOUD_DATA_PATH} ]")
+        st.success(f"☁️ GOOGLE CLOUD STORAGE STREAMING ACTIVE: Connected securely to bucket path [ gs://{BUCKET_NAME}/{CLOUD_DATA_PATH} ]")
             
         c1, c2, c3, c4 = st.columns(4)
         
@@ -222,4 +226,4 @@ else:
         st.info("Direct implementation queries can be routed through the secure project repository on GitHub.")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("© 2026 FraudGuard AI Enterprise Cloud")
+st.sidebar.caption("© 2026 FraudGuard AI Enterprise Cloud Gateway")
