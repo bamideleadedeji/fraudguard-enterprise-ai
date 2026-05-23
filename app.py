@@ -36,7 +36,7 @@ AVAILABLE_AUDITS = {
 }
 
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Enterprise Middleware v3.3 (Corporate Edition)")
+st.sidebar.caption("Enterprise Middleware v3.4 (Corporate Edition)")
 st.sidebar.markdown("---")
 
 st.sidebar.subheader(" Cloud Authentication Gateway")
@@ -54,14 +54,14 @@ def initialize_gcs_client(uploaded_file):
             key_data = json.load(uploaded_file)
             return storage.Client.from_service_account_info(key_data)
         except Exception as e:
-            st.sidebar.error(f"❌ Key Verification Failed: {e}")
+            st.sidebar.error(f" Key Verification Failed: {e}")
             return None
     return None
 
 def parse_pdf_statement_to_dataframe(pdf_bytes):
     """
-    Refined Corporate PDF Parser: Extracts transactional lines while filtering out 
-    high-value non-fee noise (balances, account numbers) and removing bank-specific labels.
+    Advanced Corporate PDF Parser: Extracts transactional rows while filtering out
+    high-value non-fee noise (balances, principal transfers, account numbers).
     """
     reader = PdfReader(io.BytesIO(pdf_bytes))
     extracted_rows = []
@@ -75,11 +75,11 @@ def parse_pdf_statement_to_dataframe(pdf_bytes):
         for line in lines:
             line_lower = line.lower()
             
-            # GUARDRAIL 1: Skip noise rows that contain structural text or large running balances
+            # GUARDRAIL 1: Skip clear noise rows containing balance metrics or structural text
             if any(noise in line_lower for noise in ["balance", "account no", "total balance", "opening", "closing", "page"]):
                 continue
                 
-            # Extract currency numbers
+            # Extract currency number structures
             amounts = re.findall(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b', line)
             if not amounts:
                 continue
@@ -89,13 +89,13 @@ def parse_pdf_statement_to_dataframe(pdf_bytes):
                 if clean_amounts:
                     target_amount = clean_amounts[0]
                     
-                    # GUARDRAIL 2: Differentiate corporate volume from bank fees
-                    # Bank fees/charges are rarely above 1 Million Naira. If a row has a massive number 
-                    # and doesn't explicitly state it's a charge, it is an account balance or a major transfer.
                     is_fee_keyword = any(kw in line_lower for kw in ["fee", "charge", "comm", "tax", "vat", "stamp", "sms"])
                     
-                    if target_amount > 1000000 and not is_fee_keyword:
-                        continue  # Skip the noise
+                    # GUARDRAIL 2: Limit lines to realistic bank charge amounts. 
+                    # Corporate ledger transfers and page balances are multi-million/multi-billion figures.
+                    # Single bank service fees never exceed ₦100,000.
+                    if target_amount > 100000 or not is_fee_keyword:
+                        continue
                         
                     # GUARDRAIL 3: Bank-Agnostic Channel Allocation
                     if "web" in line_lower or "pos" in line_lower:
@@ -103,21 +103,20 @@ def parse_pdf_statement_to_dataframe(pdf_bytes):
                     elif "ussd" in line_lower:
                         channel_label = "USSD_Portal"
                     else:
-                        channel_label = "Corporate_Mobile_Banking"  # Universal clean string
+                        channel_label = "Corporate_Mobile_Banking"
                         
                     extracted_rows.append({
                         "timestamp": pd.Timestamp.now() - pd.Timedelta(days=len(extracted_rows)),
                         "amount": target_amount,
-                        "merchant": "Bank Service Charge / VAT" if is_fee_keyword else "Corporate Service Charge",
+                        "merchant": "Bank Service Charge / VAT",
                         "user_location": "LAGOS_NGR",
                         "channel": channel_label,
-                        "risk_score": 0.8200 if is_fee_keyword else 0.1500
+                        "risk_score": 0.8200
                     })
             except:
                 continue
 
     if len(extracted_rows) == 0:
-        # Professional fallback matrix if PDF vectors are completely unreadable scanned graphics
         dates = pd.date_range(end=pd.Timestamp.now(), periods=25, freq='D')
         return pd.DataFrame({
             "timestamp": dates,
