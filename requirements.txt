@@ -5,3 +5,4 @@ plotly
 scikit-learn
 matplotlib
 google-cloud-storage
+pypdf
