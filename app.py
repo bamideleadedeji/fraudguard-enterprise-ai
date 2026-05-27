@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import os
 import io
 import json
 import re
@@ -10,9 +9,13 @@ from google.cloud import storage
 from pypdf import PdfReader
 
 # --- ARCHITECTURAL CONFIGURATION ---
-st.set_page_config(page_title="FraudGuard AI | Enterprise Edition", layout="wide", page_icon="🛡️")
+st.set_page_config(
+    page_title="FraudGuard AI | Enterprise Edition", 
+    layout="wide", 
+    page_icon="🛡️"
+)
 
-# Premium Corporate FinTech Dark Theme
+# Premium Corporate FinTech Dark Theme UI Tuning
 st.markdown("""
     <style>
     .main { background-color: #0d1117; }
@@ -26,15 +29,20 @@ st.markdown("""
 
 BUCKET_NAME = "fraudguard-enterprise-vault-bamidele"
 
+# --- SIDEBAR INTERFACE STRUCTURE ---
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Enterprise Middleware v4.0 (Dynamic Engine)")
+st.sidebar.caption("Enterprise Middleware v4.2 (Production Build)")
 st.sidebar.markdown("---")
 
 st.sidebar.subheader(" Cloud Authentication Gateway")
-uploaded_key_file = st.sidebar.file_uploader("Upload your Cloud Passport Key (.json)", type=["json"])
+uploaded_key_file = st.sidebar.file_uploader(
+    "Upload your Cloud Passport Key (.json)", 
+    type=["json"]
+)
 
 @st.cache_resource
 def initialize_gcs_client(uploaded_file):
+    """Verifies service account credentials and instantiates a secure GCS resource client."""
     if uploaded_file is not None:
         try:
             key_data = json.load(uploaded_file)
@@ -44,95 +52,99 @@ def initialize_gcs_client(uploaded_file):
             return None
     return None
 
-# --- OUT-OF-THE-BOX DYNAMIC FILE HARVESTER ---
-def discover_cloud_ledger_matrix(gcs_client):
+# --- DYNAMIC STORAGE ASSET DECOVERY PASSER ---
+@st.cache_data(ttl=10)
+def discover_cloud_ledger_matrix(_gcs_client):
     """
-    Scans the entire GCS bucket, organizes data by client folder dynamically,
-    and inspects files to automatically determine target operational years.
+    Scans the cloud storage namespace vault dynamically, indexing files by 
+    client hierarchy directories and inspecting row structures for fiscal years.
     """
     discovered_audits = {}
     try:
-        bucket = gcs_client.bucket(BUCKET_NAME)
+        bucket = _gcs_client.bucket(BUCKET_NAME)
         blobs = bucket.list_blobs()
         
         for blob in blobs:
-            # We process processed CSV logs and raw incoming client PDFs
             if blob.name.endswith('.csv') or blob.name.endswith('.pdf'):
-                # Extract client folder names (e.g., client_001_dejifolakemi_poultry)
                 parts = blob.name.split('/')
                 if len(parts) > 1:
                     client_folder = parts[0]
-                    # Clean up the folder name for a premium user-facing title
                     client_clean_title = client_folder.replace('client_', '').replace('_', ' ').title()
                     
-                    # Read metadata timelines dynamically for CSV files to find out what years are inside
                     if blob.name.endswith('.csv'):
                         try:
-                            # Read just the first few bytes to extract temporal columns without crashing memory
+                            # Read leading byte chunk safely to pull structural parameters
                             head_data = blob.download_as_text(end=5000)
                             test_df = pd.read_csv(io.StringIO(head_data))
                             if 'timestamp' in test_df.columns:
                                 test_df['timestamp'] = pd.to_datetime(test_df['timestamp'], errors='coerce')
-                                target_year = test_df['timestamp'].dt.year.dropna().unique()
-                                if len(target_year) > 0:
-                                    years_str = f" (Fiscal Ledger {min(target_year)}-{max(target_year)})"
+                                target_years = test_df['timestamp'].dt.year.dropna().unique()
+                                if len(target_years) > 0:
+                                    years_str = f" (Fiscal Ledger {min(target_years)}-{max(target_years)})"
                                 else:
                                     years_str = " (Processed Audit Log)"
                             else:
                                 years_str = " (Processed Data Stream)"
-                        except:
+                        except Exception:
                             years_str = " (Dynamic Data Batch)"
                     else:
                         years_str = " (Raw Unprocessed Statement PDF)"
                     
-                    # Map the display name to the true cloud path
                     menu_label = f" {client_clean_title}{years_str}"
                     discovered_audits[menu_label] = blob.name
                     
     except Exception as e:
-        st.sidebar.error(f"Failed to scan cloud directory: {e}")
+        st.sidebar.error(f"Failed to scan cloud directory metadata: {e}")
         
     return discovered_audits
 
-# Initialize Google Cloud Client
+# Initialize Google Cloud Session Core
 gcs_client = initialize_gcs_client(uploaded_key_file)
 
-# Dynamic Execution Layer
+# Dynamic Execution Layer Control
 if gcs_client is not None:
-    # Scan the cloud and build the menu on the fly
     AVAILABLE_AUDITS = discover_cloud_ledger_matrix(gcs_client)
-    
     if AVAILABLE_AUDITS:
         st.sidebar.markdown("---")
         st.sidebar.subheader(" Automated Client Gateway")
         selected_client = st.sidebar.selectbox("Active Corporate Profile", list(AVAILABLE_AUDITS.keys()))
         CLOUD_DATA_PATH = AVAILABLE_AUDITS[selected_client]
     else:
-        st.sidebar.warning(" Cloud connection established, but no client files found in bucket.")
+        st.sidebar.warning(" Access Layer Connected: No client storage directories detected.")
         CLOUD_DATA_PATH = None
 else:
     AVAILABLE_AUDITS = {}
     CLOUD_DATA_PATH = None
 
-# --- PARSING CORE & ENGINE INTERACTION ---
+# --- TRANSACTONAL PARSING INFRASTRUCTURE ---
 def parse_pdf_statement_to_dataframe(pdf_bytes):
+    """Processes binary stream statement text arrays to pull non-compliant overcharges."""
     reader = PdfReader(io.BytesIO(pdf_bytes))
     extracted_rows = []
+    
     for page in reader.pages:
         text = page.extract_text()
-        if not text: continue
+        if not text: 
+            continue
         for line in text.split("\n"):
             line_lower = line.lower()
-            if any(noise in line_lower for noise in ["balance", "account no", "total balance", "opening", "closing", "page"]): continue
+            if any(noise in line_lower for noise in ["balance", "account no", "total balance", "opening", "closing", "page"]): 
+                continue
+                
             amounts = re.findall(r'\b\d{1,3}(?:,\d{3})*(?:\.\d{2})?\b', line)
-            if not amounts: continue
+            if not amounts: 
+                continue
+                
             try:
                 clean_amounts = [float(amt.replace(',', '')) for amt in amounts if '.' in amt or len(amt) > 2]
                 if clean_amounts:
                     target_amount = clean_amounts[0]
                     is_fee_keyword = any(kw in line_lower for kw in ["fee", "charge", "comm", "tax", "vat", "stamp", "sms"])
-                    if target_amount > 100000 or not is_fee_keyword: continue
-                    channel_label = "Web_POS_Gateway" if "web" in line_lower or "pos" in line_lower else "Corporate_Mobile_Banking"
+                    
+                    if target_amount > 100000 or not is_fee_keyword: 
+                        continue
+                        
+                    channel_label = "Web_POS_Gateway" if any(c in line_lower for c in ["web", "pos"]) else "Corporate_Mobile_Banking"
                     extracted_rows.append({
                         "timestamp": pd.Timestamp.now() - pd.Timedelta(days=len(extracted_rows)),
                         "amount": target_amount,
@@ -141,46 +153,58 @@ def parse_pdf_statement_to_dataframe(pdf_bytes):
                         "channel": channel_label,
                         "risk_score": 0.8200
                     })
-            except: continue
-    return pd.DataFrame(extracted_rows) if extracted_rows else pd.DataFrame(columns=["timestamp", "amount", "merchant", "user_location", "channel", "risk_score"])
+            except Exception: 
+                continue
+                
+    if extracted_rows:
+        return pd.DataFrame(extracted_rows)
+    return pd.DataFrame(columns=["timestamp", "amount", "merchant", "user_location", "channel", "risk_score"])
 
-def ingest_cloud_audit_matrix(file_path):
-    if not file_path: return pd.DataFrame()
+@st.cache_data(ttl=10)
+def ingest_cloud_audit_matrix(file_path, _key_file_anchor):
+    """Downloads structural assets from cloud vectors and maps columns into analytical matrices."""
+    if not file_path: 
+        return pd.DataFrame()
     try:
         bucket = gcs_client.bucket(BUCKET_NAME)
         blob = bucket.blob(file_path)
+        
         if file_path.endswith('.pdf'):
             return parse_pdf_statement_to_dataframe(blob.download_as_bytes())
         else:
             csv_data = blob.download_as_text()
             df_raw = pd.read_csv(io.StringIO(csv_data))
+            
             if 'timestamp' in df_raw.columns:
                 df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], errors='coerce')
             if 'risk_score' in df_raw.columns:
                 df_raw['risk_score'] = pd.to_numeric(df_raw['risk_score'], errors='coerce').fillna(0.1500)
                 df_raw['is_fraud'] = np.where(df_raw['risk_score'] > 0.85, 1, 0)
+            if 'amount' in df_raw.columns:
+                df_raw['amount'] = pd.to_numeric(df_raw['amount'], errors='coerce').fillna(0.0)
             return df_raw
-    except:
+    except Exception as e:
+        st.error(f" Pipeline Ingestion Failure on target resource: {e}")
         return pd.DataFrame()
 
-# Stream Data
-df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH) if CLOUD_DATA_PATH else pd.DataFrame()
+# Ingest and Frame Data Elements
+df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH, uploaded_key_file) if CLOUD_DATA_PATH else pd.DataFrame()
 
-# --- RUNNING ENGINE PRESENTATION LAYER ---
+# --- PRESENTATION PRESENTATION LAYER ---
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log"])
 
 if uploaded_key_file is None:
     st.info(" Secure Local Gateway Idle: Please upload your Google Cloud credentials JSON passport key file to dynamically scan your data vault.")
 elif df.empty:
-    st.warning(" Access Layer Active: Streaming information from selected cloud repository...")
+    st.warning(" Access Layer Active: Awaiting clean dynamic data stream extraction from cloud repository...")
 else:
-    # Calculations based on active dynamic dataframe
+    # Compile targets based on metric definitions
     charges_pool = df[df['risk_score'] == 0.8200]
     total_charges_value = charges_pool['amount'].sum() if not charges_pool.empty else 0.0
 
     if view == "Executive Summary":
         st.title("System Health & Excess Charge Overview")
-        st.success(f" HYBRID CLOUD EXTRACTION ACTIVE: Streamed dynamic resource target [ gs://{BUCKET_NAME}/{CLOUD_DATA_PATH} ] successfully.")
+        st.success(f"☁️ HYBRID CLOUD EXTRACTION ACTIVE: Streamed resource vector [ gs://{BUCKET_NAME}/{CLOUD_DATA_PATH} ] successfully.")
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Bank Charges Audited", f"₦{total_charges_value:,.2f}")
@@ -192,14 +216,22 @@ else:
         col_left, col_right = st.columns([2, 1])
         with col_left:
             st.subheader("Temporal Distribution of Ingested Records")
-            trend = df.groupby(df['timestamp'].dt.date).size().reset_index(name='Record Count')
-            fig = px.line(trend, x='timestamp', y='Record Count', template="plotly_dark", color_discrete_sequence=['#00ff88'])
-            st.plotly_chart(fig, use_container_width=True)
+            if 'timestamp' in df.columns and not df.empty:
+                trend = df.groupby(df['timestamp'].dt.date).size().reset_index(name='Record Count')
+                fig = px.line(trend, x='timestamp', y='Record Count', template="plotly_dark", color_discrete_sequence=['#00ff88'])
+                fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No temporal indicators available for trends mapping.")
+                
         with col_right:
             st.subheader("Channel Penetration Schema")
-            if 'channel' in df.columns and not df.empty:
+            if 'channel' in df.columns and not df.empty and df['amount'].sum() > 0:
                 fig2 = px.pie(df, names='channel', values='amount', hole=0.5, color_discrete_sequence=px.colors.sequential.Greens_r)
+                fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig2, use_container_width=True)
+            else:
+                st.info("Insufficient volume variation for distribution schemas.")
 
     elif view == "Quantitative Analytics":
         st.title("Model Integrity & KPI Analysis")
@@ -211,4 +243,9 @@ else:
 
     elif view == "Threat Intelligence Log":
         st.title("CBN Excess Charge Recovery Ledger")
-        st.dataframe(charges_pool.style.format({"amount": "₦{:,.2f}"}), use_container_width=True)
+        st.markdown("Displaying extracted system fees containing elevated regulatory compliance risks.")
+        display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if c in charges_pool.columns]
+        if not charges_pool.empty:
+            st.dataframe(charges_pool[display_cols].style.format({"amount": "₦{:,.2f}"}), use_container_width=True)
+        else:
+            st.info("No compliance breaches found in the current filtered profile slice.")
