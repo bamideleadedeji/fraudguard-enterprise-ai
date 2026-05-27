@@ -52,7 +52,7 @@ def initialize_gcs_client(uploaded_file):
             return None
     return None
 
-# --- DYNAMIC STORAGE ASSET DECOVERY PASSER ---
+# --- DYNAMIC STORAGE ASSET DISCOVERY PASSER ---
 @st.cache_data(ttl=10)
 def discover_cloud_ledger_matrix(_gcs_client):
     """
@@ -76,6 +76,10 @@ def discover_cloud_ledger_matrix(_gcs_client):
                             # Read leading byte chunk safely to pull structural parameters
                             head_data = blob.download_as_text(end=5000)
                             test_df = pd.read_csv(io.StringIO(head_data))
+                            
+                            # Force columns to lowercase for safe metadata dynamic inspection
+                            test_df.columns = [str(col).strip().lower() for col in test_df.columns]
+                            
                             if 'timestamp' in test_df.columns:
                                 test_df['timestamp'] = pd.to_datetime(test_df['timestamp'], errors='coerce')
                                 target_years = test_df['timestamp'].dt.year.dropna().unique()
@@ -116,7 +120,7 @@ else:
     AVAILABLE_AUDITS = {}
     CLOUD_DATA_PATH = None
 
-# --- TRANSACTONAL PARSING INFRASTRUCTURE ---
+# --- TRANSACTIONAL PARSING INFRASTRUCTURE ---
 def parse_pdf_statement_to_dataframe(pdf_bytes):
     """Processes binary stream statement text arrays to pull non-compliant overcharges."""
     reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -157,7 +161,9 @@ def parse_pdf_statement_to_dataframe(pdf_bytes):
                 continue
                 
     if extracted_rows:
-        return pd.DataFrame(extracted_rows)
+        df_out = pd.DataFrame(extracted_rows)
+        df_out.columns = [str(col).strip().lower() for col in df_out.columns]
+        return df_out
     return pd.DataFrame(columns=["timestamp", "amount", "merchant", "user_location", "channel", "risk_score"])
 
 @st.cache_data(ttl=10)
@@ -175,6 +181,10 @@ def ingest_cloud_audit_matrix(file_path, _key_file_anchor):
             csv_data = blob.download_as_text()
             df_raw = pd.read_csv(io.StringIO(csv_data))
             
+            # --- CRITICAL PRODUCTION SYNC PATCH ---
+            # Automatically force all column headers to lowercase to stop trace KeyError anomalies
+            df_raw.columns = [str(col).strip().lower() for col in df_raw.columns]
+            
             if 'timestamp' in df_raw.columns:
                 df_raw['timestamp'] = pd.to_datetime(df_raw['timestamp'], errors='coerce')
             if 'risk_score' in df_raw.columns:
@@ -190,7 +200,7 @@ def ingest_cloud_audit_matrix(file_path, _key_file_anchor):
 # Ingest and Frame Data Elements
 df = ingest_cloud_audit_matrix(CLOUD_DATA_PATH, uploaded_key_file) if CLOUD_DATA_PATH else pd.DataFrame()
 
-# --- PRESENTATION PRESENTATION LAYER ---
+# --- PRESENTATION LAYER ---
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log"])
 
 if uploaded_key_file is None:
@@ -198,7 +208,7 @@ if uploaded_key_file is None:
 elif df.empty:
     st.warning(" Access Layer Active: Awaiting clean dynamic data stream extraction from cloud repository...")
 else:
-    # Compile targets based on metric definitions
+    # Compile targets safely based on updated normalized lowercase rules
     charges_pool = df[df['risk_score'] == 0.8200]
     total_charges_value = charges_pool['amount'].sum() if not charges_pool.empty else 0.0
 
@@ -220,7 +230,7 @@ else:
                 trend = df.groupby(df['timestamp'].dt.date).size().reset_index(name='Record Count')
                 fig = px.line(trend, x='timestamp', y='Record Count', template="plotly_dark", color_discrete_sequence=['#00ff88'])
                 fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             else:
                 st.info("No temporal indicators available for trends mapping.")
                 
@@ -229,7 +239,7 @@ else:
             if 'channel' in df.columns and not df.empty and df['amount'].sum() > 0:
                 fig2 = px.pie(df, names='channel', values='amount', hole=0.5, color_discrete_sequence=px.colors.sequential.Greens_r)
                 fig2.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
             else:
                 st.info("Insufficient volume variation for distribution schemas.")
 
@@ -246,6 +256,6 @@ else:
         st.markdown("Displaying extracted system fees containing elevated regulatory compliance risks.")
         display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if c in charges_pool.columns]
         if not charges_pool.empty:
-            st.dataframe(charges_pool[display_cols].style.format({"amount": "₦{:,.2f}"}), use_container_width=True)
+            st.dataframe(charges_pool[display_cols].style.format({"amount": "₦{:,.2f}"}), width="stretch")
         else:
             st.info("No compliance breaches found in the current filtered profile slice.")
