@@ -72,7 +72,6 @@ def parse_raw_pdf_statement(filepath):
                     clean_amounts = [float(amt.replace(',', '')) for amt in amounts if '.' in amt or len(amt) > 2]
                     if clean_amounts:
                         target_amount = clean_amounts[0]
-                        # Deep-dive forensic pattern matching for PDFs
                         is_fee = any(kw in line_lower for kw in ["fee", "charge", "comm", "tax", "vat", "stamp", "sms", "maintenance", "levy", "duty", "recovery", "gsi"])
                         
                         if target_amount > 100000 or not is_fee:
@@ -132,6 +131,7 @@ def compile_client_statement_batches(client_folder_path):
             if not df_batch.empty:
                 df_batch.columns = [str(col).strip() for col in df_batch.columns]
                 
+                # Dynamic Bank Translation Map
                 header_mapping = {
                     'Transaction Date': 'timestamp',
                     'transaction date': 'timestamp',
@@ -153,7 +153,7 @@ def compile_client_statement_batches(client_folder_path):
         
     try:
         df_master = pd.concat(compiled_frames, ignore_index=True)
-        df_master.drop_duplicates(inplace=True)
+        df_master.drop_duplicates(subset=['timestamp', 'amount', 'merchant'], keep='first', inplace=True)
         
         # --- COMMERCIAL STRUCTURAL SCHEMA GUARD ---
         if 'timestamp' not in df_master.columns:
@@ -171,13 +171,21 @@ def compile_client_statement_batches(client_folder_path):
         if 'channel' not in df_master.columns:
             df_master['channel'] = "Corporate_Mobile_Banking"
 
-        # --- EXPANDED HIGH-NET FORENSIC FEE MODEL DETECTION ---
-        # Expanded keywords trap complex hidden banking charges (including NIP fees, levies, and recoveries)
-        df_master['risk_score'] = 0.1500  # Default safe baseline
-        if 'merchant' in df_master.columns:
-            expanded_fee_pattern = r'(fee|charge|comm|tax|vat|stamp|sms|maintenance|levy|duty|recovery|gsi|nipfee)'
-            is_fee_row = df_master['merchant'].astype(str).str.lower().str.contains(expanded_fee_pattern, na=False, regex=True)
-            df_master.loc[is_fee_row, 'risk_score'] = 0.8200
+        # --- FORENSIC PRESERVATION ENGINE ---
+        # If the file already contains pre-calculated forensic risk scores, HONOR and preserve them.
+        # Otherwise, run the dynamic text regex scanner on raw statements.
+        if 'risk_score' not in df_master.columns:
+            df_master['risk_score'] = 0.1500
+            if 'merchant' in df_master.columns:
+                expanded_fee_pattern = r'(fee|charge|comm|tax|vat|stamp|sms|maintenance|levy|duty|recovery|gsi|nipfee)'
+                is_fee_row = df_master['merchant'].astype(str).str.lower().str.contains(expanded_fee_pattern, na=False, regex=True)
+                df_master.loc[is_fee_row, 'risk_score'] = 0.8200
+        else:
+            df_master['risk_score'] = pd.to_numeric(df_master['risk_score'], errors='coerce').fillna(0.1500)
+            if 'merchant' in df_master.columns:
+                expanded_fee_pattern = r'(fee|charge|comm|tax|vat|stamp|sms|maintenance|levy|duty|recovery|gsi|nipfee)'
+                is_fee_row = df_master['merchant'].astype(str).str.lower().str.contains(expanded_fee_pattern, na=False, regex=True)
+                df_master.loc[is_fee_row & (df_master['risk_score'] == 0.1500), 'risk_score'] = 0.8200
 
         # --- DATA TYPE PROTECTION ROUTINES ---
         df_master['timestamp'] = pd.to_datetime(df_master['timestamp'], errors='coerce')
@@ -186,7 +194,6 @@ def compile_client_statement_batches(client_folder_path):
             df_master['amount'] = df_master['amount'].astype(str).str.replace(',', '')
             
         df_master['amount'] = pd.to_numeric(df_master['amount'], errors='coerce').fillna(0.0)
-        df_master['risk_score'] = pd.to_numeric(df_master['risk_score'], errors='coerce').fillna(0.1500)
         df_master['is_fraud'] = np.where(df_master['risk_score'] > 0.85, 1, 0)
             
         if df_master['timestamp'].notna().any():
@@ -200,7 +207,7 @@ def compile_client_statement_batches(client_folder_path):
 
 # --- INITIALIZE PLATFORM MIDDLEWARE ---
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Universal Middleware v9.4 (High-Sensitivity Forensic Build)")
+st.sidebar.caption("Universal Middleware v9.6 (Forensic Preservation Build)")
 st.sidebar.markdown("---")
 
 CORPORATE_REGISTRY = discover_corporate_tenants()
@@ -231,7 +238,7 @@ else:
     if view == "Executive Summary":
         st.title(f"{selected_client_name}")
         st.caption(f"💼 Multi-Format Ingestion Active // {fiscal_window}")
-        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: High-sensitivity multi-bank extraction active.")
+        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: Forensic audit matrices preserved successfully.")
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Bank Charges Audited", f"₦{total_charges_value:,.2f}")
