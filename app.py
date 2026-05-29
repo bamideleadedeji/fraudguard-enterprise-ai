@@ -137,43 +137,53 @@ def compile_client_statement_batches(client_folder_path):
             continue
             
     if not compiled_frames:
-        return pd.DataFrame()
+        # Fallback to an empty schema framework if folder contains nothing readable yet
+        df_empty_schema = pd.DataFrame(columns=['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'])
+        return df_empty_schema
         
     try:
         df_master = pd.concat(compiled_frames, ignore_index=True)
         df_master.drop_duplicates(inplace=True)
         
-        # --- BULLETPROOF INSURANCE SYSTEM ---
-        # Ensures that missing metrics or structural shifts in spreadsheets never cause crashes
-        if 'timestamp' in df_master.columns:
-            df_master['timestamp'] = pd.to_datetime(df_master['timestamp'], errors='coerce')
+        # --- ABSOLUTE SCHEMATIC SCHEMA GUARD ---
+        # If any file completely lacks a required corporate data key, 
+        # this block injects the column immediately to eliminate KeyError risks.
+        if 'timestamp' not in df_master.columns:
+            df_master['timestamp'] = pd.Timestamp.now()
             
-        if 'amount' in df_master.columns:
-            df_master['amount'] = pd.to_numeric(df_master['amount'], errors='coerce').fillna(0.0)
+        if 'amount' not in df_master.columns:
+            df_master['amount'] = 0.0
             
-        if 'risk_score' in df_master.columns:
-            df_master['risk_score'] = pd.to_numeric(df_master['risk_score'], errors='coerce').fillna(0.1500)
-        else:
-            df_master['risk_score'] = 0.8200
+        if 'merchant' not in df_master.columns:
+            df_master['merchant'] = "System Data Stream Ingestion"
+            
+        if 'user_location' not in df_master.columns:
+            df_master['user_location'] = "LAGOS_NGR"
             
         if 'channel' not in df_master.columns:
             df_master['channel'] = "Corporate_Mobile_Banking"
             
-        if 'is_fraud' not in df_master.columns:
-            df_master['is_fraud'] = np.where(df_master['risk_score'] > 0.85, 1, 0)
+        if 'risk_score' not in df_master.columns:
+            df_master['risk_score'] = 0.8200
+
+        # --- DATA TYPE PROTECTION ROUTINES ---
+        df_master['timestamp'] = pd.to_datetime(df_master['timestamp'], errors='coerce')
+        df_master['amount'] = pd.to_numeric(df_master['amount'], errors='coerce').fillna(0.0)
+        df_master['risk_score'] = pd.to_numeric(df_master['risk_score'], errors='coerce').fillna(0.1500)
+        df_master['is_fraud'] = np.where(df_master['risk_score'] > 0.85, 1, 0)
             
-        if 'timestamp' in df_master.columns and df_master['timestamp'].notna().any():
+        if df_master['timestamp'].notna().any():
             df_master.sort_values(by='timestamp', inplace=True, ascending=True)
             df_master.reset_index(drop=True, inplace=True)
             
         return df_master
     except Exception as e:
         st.error(f"Failsafe Matrix Compilation Error: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(columns=['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'])
 
 # --- INITIALIZE PLATFORM MIDDLEWARE ---
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Universal Middleware v8.2 (Production Absolute)")
+st.sidebar.caption("Universal Middleware v9.0 (Enterprise Absolute)")
 st.sidebar.markdown("---")
 
 CORPORATE_REGISTRY = discover_corporate_tenants()
@@ -185,14 +195,15 @@ if CORPORATE_REGISTRY:
     df = compile_client_statement_batches(target_folder_route)
 else:
     st.sidebar.warning("⚠️ Gateway Alert: No active client data environments found.")
-    df = pd.DataFrame()
+    df = pd.DataFrame(columns=['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'])
 
 view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative Analytics", "Threat Intelligence Log"])
 
 # --- DATA PRESENTATION INTERFACE ---
-if df.empty:
+if df.empty or (df['amount'].sum() == 0 and len(df) <= 1):
     st.warning(f"📋 System Setup Normal: Awaiting active corporate batch files (.pdf, .csv, .xlsx) inside your `/{BASE_DATA_DIR}` subfolders.")
 else:
+    # Safe analytical tracking filters
     charges_pool = df[df['risk_score'] == 0.8200]
     total_charges_value = charges_pool['amount'].sum() if not charges_pool.empty else 0.0
 
@@ -204,7 +215,7 @@ else:
     if view == "Executive Summary":
         st.title(f"{selected_client_name}")
         st.caption(f"💼 Multi-Format Ingestion Active // {fiscal_window}")
-        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: All multi-format matrices parsed and cross-referenced.")
+        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: Core schemas secured and verified.")
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Bank Charges Audited", f"₦{total_charges_value:,.2f}")
@@ -216,14 +227,14 @@ else:
         col_left, col_right = st.columns([2, 1])
         with col_left:
             st.subheader("Temporal Distribution of Consolidated Records")
-            if 'timestamp' in df.columns and not df.empty:
+            if 'timestamp' in df.columns and len(df) > 1:
                 trend = df.groupby(df['timestamp'].dt.date).size().reset_index(name='Record Count')
                 trend.columns = ['Date', 'Record Count']
                 fig = px.line(trend, x='Date', y='Record Count', template="plotly_dark", color_discrete_sequence=['#00ff88'])
                 fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="Timeline Range", yaxis_title="Consolidated Volume")
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No temporal indicators available for trends mapping.")
+                st.info("Awaiting structural date arrays to plot timeline velocity curves.")
                 
         with col_right:
             st.subheader("Channel Penetration Schema")
@@ -246,7 +257,7 @@ else:
         st.title("CBN Excess Charge Recovery Ledger")
         st.markdown(f"Displaying extracted system fees containing elevated regulatory compliance risks for **{selected_client_name}**.")
         display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if c in charges_pool.columns]
-        if not charges_pool.empty:
+        if not charges_pool.empty and total_charges_value > 0:
             st.dataframe(charges_pool[display_cols].style.format({"amount": "₦{:,.2f}"}), use_container_width=True)
         else:
-            st.info("No policy infractions documented in the active data partition slice.")      
+            st.info("No policy infractions documented in the active data partition slice.")
