@@ -98,7 +98,7 @@ def parse_raw_pdf_statement(filepath):
 def compile_client_statement_batches(client_folder_path):
     """
     Scans a client's folder, dynamically detects file types (.pdf, .csv, .xlsx),
-    applies the correct ingestion handler, and combines them smoothly.
+    applies the correct ingestion handler, maps headers and combines them smoothly.
     """
     if not client_folder_path or not os.path.exists(client_folder_path):
         return pd.DataFrame()
@@ -129,7 +129,23 @@ def compile_client_statement_batches(client_folder_path):
                 continue
                 
             if not df_batch.empty:
-                df_batch.columns = [str(col).strip().lower() for col in df_batch.columns]
+                # Core Text Alignment
+                df_batch.columns = [str(col).strip() for col in df_batch.columns]
+                
+                # --- NATIVE BANK HEADER MAPPING DICTIONARY ---
+                # Standardizes Raw Banking Statement Labels into the analytical schema
+                header_mapping = {
+                    'Transaction Date': 'timestamp',
+                    'transaction date': 'timestamp',
+                    'Narration': 'merchant',
+                    'narration': 'merchant',
+                    'Debit': 'amount',
+                    'debit': 'amount'
+                }
+                df_batch.rename(columns=header_mapping, inplace=True)
+                
+                # Force all output columns to lowercase for downstream stability
+                df_batch.columns = [str(col).lower() for col in df_batch.columns]
                 compiled_frames.append(df_batch)
                 
         except Exception as e:
@@ -137,7 +153,6 @@ def compile_client_statement_batches(client_folder_path):
             continue
             
     if not compiled_frames:
-        # Fallback to an empty schema framework if folder contains nothing readable yet
         df_empty_schema = pd.DataFrame(columns=['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'])
         return df_empty_schema
         
@@ -145,9 +160,7 @@ def compile_client_statement_batches(client_folder_path):
         df_master = pd.concat(compiled_frames, ignore_index=True)
         df_master.drop_duplicates(inplace=True)
         
-        # --- ABSOLUTE SCHEMATIC SCHEMA GUARD ---
-        # If any file completely lacks a required corporate data key, 
-        # this block injects the column immediately to eliminate KeyError risks.
+        # --- COMMERCIAL STRUCTURAL SCHEMA GUARD ---
         if 'timestamp' not in df_master.columns:
             df_master['timestamp'] = pd.Timestamp.now()
             
@@ -162,12 +175,25 @@ def compile_client_statement_batches(client_folder_path):
             
         if 'channel' not in df_master.columns:
             df_master['channel'] = "Corporate_Mobile_Banking"
-            
+
+        # --- DYNAMIC FORENSIC FEE MODEL DETECTION ---
+        # If the incoming sheet doesn't contain pre-scored models, scan narration keywords
+        # and tag them with an audit score of 0.8200 automatically.
         if 'risk_score' not in df_master.columns:
-            df_master['risk_score'] = 0.8200
+            df_master['risk_score'] = 0.1500 # Default safe baseline
+            if 'merchant' in df_master.columns:
+                fee_pattern = r'(fee|charge|comm|tax|vat|stamp|sms|maintenance)'
+                # Identify rows containing charges and tag them
+                is_fee_row = df_master['merchant'].astype(str).str.lower().str.contains(fee_pattern, na=False, regex=True)
+                df_master.loc[is_fee_row, 'risk_score'] = 0.8200
 
         # --- DATA TYPE PROTECTION ROUTINES ---
         df_master['timestamp'] = pd.to_datetime(df_master['timestamp'], errors='coerce')
+        
+        # Clean formatting commas out of bank amount entries (e.g. '1,000.00' -> 1000.00)
+        if df_master['amount'].dtype == object:
+            df_master['amount'] = df_master['amount'].astype(str).str.replace(',', '')
+            
         df_master['amount'] = pd.to_numeric(df_master['amount'], errors='coerce').fillna(0.0)
         df_master['risk_score'] = pd.to_numeric(df_master['risk_score'], errors='coerce').fillna(0.1500)
         df_master['is_fraud'] = np.where(df_master['risk_score'] > 0.85, 1, 0)
@@ -183,7 +209,7 @@ def compile_client_statement_batches(client_folder_path):
 
 # --- INITIALIZE PLATFORM MIDDLEWARE ---
 st.sidebar.title("🛡️ FraudGuard AI")
-st.sidebar.caption("Universal Middleware v9.0 (Enterprise Absolute)")
+st.sidebar.caption("Universal Middleware v9.2 (Commercial Multi-Bank Absolute)")
 st.sidebar.markdown("---")
 
 CORPORATE_REGISTRY = discover_corporate_tenants()
@@ -203,7 +229,7 @@ view = st.sidebar.radio("Dashboard Modules", ["Executive Summary", "Quantitative
 if df.empty or (df['amount'].sum() == 0 and len(df) <= 1):
     st.warning(f"📋 System Setup Normal: Awaiting active corporate batch files (.pdf, .csv, .xlsx) inside your `/{BASE_DATA_DIR}` subfolders.")
 else:
-    # Safe analytical tracking filters
+    # Target all compliance-flagged charges
     charges_pool = df[df['risk_score'] == 0.8200]
     total_charges_value = charges_pool['amount'].sum() if not charges_pool.empty else 0.0
 
@@ -215,7 +241,7 @@ else:
     if view == "Executive Summary":
         st.title(f"{selected_client_name}")
         st.caption(f"💼 Multi-Format Ingestion Active // {fiscal_window}")
-        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: Core schemas secured and verified.")
+        st.success("✅ RECONCILIATION BATCH COMPILER ACTIVE: Multi-bank translation layer applied successfully.")
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Bank Charges Audited", f"₦{total_charges_value:,.2f}")
