@@ -93,6 +93,53 @@ def parse_raw_pdf_statement(filepath):
         
     return pd.DataFrame(extracted_rows)
 
+# --- FORENSIC DUPLICATE & RETRY DETECTOR ENGINE ---
+def detect_system_retry_duplicates(dataframe, time_buffer_seconds=60):
+    """
+    Scans the data stream chronologically to identify rapid retry log anomalies 
+    where identical amounts hit the same merchant interface channel within a short window.
+    """
+    if dataframe.empty or 'timestamp' not in dataframe.columns or 'amount' not in dataframe.columns:
+        dataframe['is_retry_duplicate'] = False
+        dataframe['retry_group_id'] = None
+        return dataframe
+
+    # Working copy sorted chronologically for sequence calculation
+    df_sorted = dataframe.sort_values(by='timestamp').copy()
+    
+    # Pre-compute difference calculations between successive rows
+    df_sorted['prev_timestamp'] = df_sorted['timestamp'].shift(1)
+    df_sorted['prev_amount'] = df_sorted['amount'].shift(1)
+    df_sorted['prev_merchant'] = df_sorted['merchant'].shift(1)
+    df_sorted['prev_channel'] = df_sorted['channel'].shift(1)
+    
+    # Calculate difference in seconds
+    time_delta = (df_sorted['timestamp'] - df_sorted['prev_timestamp']).dt.total_seconds()
+    
+    # Validation Match Triggers
+    amount_match = df_sorted['amount'] == df_sorted['prev_amount']
+    merchant_match = df_sorted['merchant'] == df_sorted['prev_merchant']
+    channel_match = df_sorted['channel'] == df_sorted['prev_channel']
+    within_window = time_delta <= time_buffer_seconds
+    
+    # Isolate subsequent duplicate rows matching conditions
+    df_sorted['is_retry_duplicate'] = amount_match & merchant_match & channel_match & within_window
+    
+    # Generate continuous sequence IDs for grouping duplicates together visually
+    group_trigger = ~(amount_match & merchant_match & channel_match & within_window)
+    df_sorted['retry_group_id'] = group_trigger.cumsum()
+    
+    # Map the isolated boolean markers back to the main un-sorted dataframe structure
+    dataframe['is_retry_duplicate'] = dataframe.index.map(df_sorted['is_retry_duplicate'])
+    dataframe['retry_group_id'] = dataframe.index.map(df_sorted['retry_group_id'])
+    
+    # Ensure items without real duplicates don't map to single-item group sequences
+    group_counts = dataframe['retry_group_id'].value_counts()
+    standalone_groups = group_counts[group_counts == 1].index
+    dataframe.loc[dataframe['retry_group_id'].isin(standalone_groups), 'retry_group_id'] = None
+    
+    return dataframe
+
 # --- MULTI-FORMAT COMPILING INGESTION ENGINE ---
 @st.cache_data(ttl=10)
 def compile_client_statement_batches(client_folder_path):
@@ -126,6 +173,8 @@ def compile_client_statement_batches(client_folder_path):
             if 'timestamp' in df_export.columns:
                 df_export['timestamp'] = pd.to_datetime(df_export['timestamp'], errors='coerce')
                 
+            # Inject structural detector logic directly into priority exports
+            df_export = detect_system_retry_duplicates(df_export)
             return df_export
         except Exception:
             pass 
@@ -191,6 +240,8 @@ def compile_client_statement_batches(client_folder_path):
             df_master.sort_values(by='timestamp', inplace=True, ascending=True)
             df_master.reset_index(drop=True, inplace=True)
             
+        # Execute the duplicate logging logic
+        df_master = detect_system_retry_duplicates(df_master)
         return df_master
     except Exception as e:
         st.error(f"Failsafe Matrix Compilation Error: {e}")
@@ -198,20 +249,23 @@ def compile_client_statement_batches(client_folder_path):
 
 # --- RECURRING FORENSIC EXCEL GENERATION ENGINE ---
 def generate_forensic_excel_package(master_dataframe, client_name, gross_valuation, volume_count):
-    """
-    Generates an institutional-grade, multi-tab corporate Excel report.
-    Applies professional financial layouts matching a Chartered Accountant's expectations.
-    """
+    """Generates an institutional-grade, multi-tab corporate Excel report."""
     output_buffer = io.BytesIO()
     
     with pd.ExcelWriter(output_buffer, engine='openpyxl') as writer:
         # --- TAB 1: EXECUTIVE AUDIT SUMMARY COVER ---
+        duplicate_sub_pool = master_dataframe[master_dataframe['is_retry_duplicate'] == True]
+        duplicate_sum = duplicate_sub_pool['amount'].sum() if not duplicate_sub_pool.empty else 0.0
+        duplicate_count = len(duplicate_sub_pool)
+
         summary_records = {
             "Audit Parameter Field": [
                 "Corporate Audit Target Profile",
                 "Forensic Investigation Window",
                 "Total Flagged Exceptions (Row Volume)",
                 "Consolidated Recovery Valuation Pool",
+                "Isolated System Duplicate Retries (Count)",
+                "Total Value Lost to Retry Latency Errors",
                 "Regulatory Compliance Status",
                 "Assigned Lead Forensic Systems Auditor"
             ],
@@ -220,6 +274,8 @@ def generate_forensic_excel_package(master_dataframe, client_name, gross_valuati
                 "May 2026 Operational Cycle",
                 f"{volume_count} Transactions Logged",
                 f"NGN {gross_valuation:,.2f}",
+                f"{duplicate_count} Duplicate Events Found",
+                f"NGN {duplicate_sum:,.2f}",
                 "100% CBN Central Ledger Breach Confirmed",
                 "Bamidele Adedeji, MSc, PGDS"
             ]
@@ -228,22 +284,19 @@ def generate_forensic_excel_package(master_dataframe, client_name, gross_valuati
         df_cover.to_excel(writer, sheet_name="Audit Summary Cover", index=False)
         
         # --- TAB 2: DISPUTED LEDGERS MASTER ---
-        display_cols = ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score']
+        display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score', 'is_retry_duplicate'] if c in master_dataframe.columns]
         df_ledger = master_dataframe[display_cols].copy()
-        df_ledger['timestamp'] = df_ledger['timestamp'].astype(str) # String parsing prevents Excel timestamp corruption
-        df_ledger.columns = ['Transaction Timestamp', 'Amount (NGN)', 'System Narration / Identifier', 'Sovereign Location', 'Interface Channel', 'Algorithmic Risk Score']
+        df_ledger['timestamp'] = df_ledger['timestamp'].astype(str)
         df_ledger.to_excel(writer, sheet_name="Disputed Ledgers Master", index=False)
         
-        # --- TAB 3: ACCOUNTING SCHEDULES (SIDE-BY-SIDE CHECKER) ---
+        # --- TAB 3: ACCOUNTING SCHEDULES ---
         df_schedule = master_dataframe.groupby('channel')['amount'].agg(['count', 'sum']).reset_index()
         df_schedule.columns = ['Transactional Interface Channel', 'Audited Volume (Count)', 'Aggregated Cash Footing (NGN)']
         df_schedule.to_excel(writer, sheet_name="Channel Schedules", index=False)
         
-        # Access openpyxl workbook internals to style columns natively for high-level accountants
         workbook = writer.book
         for sheet_name in workbook.sheetnames:
             worksheet = workbook[sheet_name]
-            # Automatically scale column widths to prevent standard Excel cell padding cutoffs
             for col in worksheet.columns:
                 max_len = max(len(str(cell.value or '')) for cell in col)
                 col_letter = chr(65 + col[0].column - 1)
@@ -277,6 +330,11 @@ else:
     total_charges_value = charges_pool['amount'].sum() if not charges_pool.empty else 0.0
     total_row_count = len(charges_pool)
 
+    # Calculate duplicate variables for layout alerts
+    duplicates_only = charges_pool[charges_pool['is_retry_duplicate'] == True]
+    total_duplicate_value = duplicates_only['amount'].sum() if not duplicates_only.empty else 0.0
+    total_duplicate_count = len(duplicates_only)
+
     if 'timestamp' in df.columns and df['timestamp'].notna().any():
         fiscal_window = f"Fiscal Window: {df['timestamp'].dt.year.min()} - {df['timestamp'].dt.year.max()}"
     else:
@@ -289,10 +347,16 @@ else:
         
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Bank Charges Audited", f"₦{total_charges_value:,.2f}")
-        c2.metric("CBN Compliance Breach Rate", "100.0%")
+        c2.metric("Isolated Network Duplicates", f"{total_duplicate_count} Items")
         c3.metric("Fee Recovery Pool", f"₦{total_charges_value:,.2f}")
         c4.metric("Consultant Payout (15%)", f"₦{total_charges_value * 0.15:,.2f}")
         st.divider()
+
+        # Alert banners signaling duplicate status
+        if total_duplicate_count > 0:
+            st.error(f"🚨 LATENCY ARTIFACT DETECTED: Found {total_duplicate_count} continuous retry events accounting for ₦{total_duplicate_value:,.2f} in duplicate debits. These represent direct communication errors.")
+        else:
+            st.info("🟢 FLOW INTELLIGENCE: Transaction chronological intervals are within acceptable operational boundaries.")
 
         col_left, col_right = st.columns([2, 1])
         with col_left:
@@ -345,8 +409,17 @@ else:
         )
         st.markdown("---")
         
-        display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score'] if c in charges_pool.columns]
+        # Display table highlighting isolated duplicate rows in red text
+        display_cols = [c for c in ['timestamp', 'amount', 'merchant', 'user_location', 'channel', 'risk_score', 'is_retry_duplicate'] if c in charges_pool.columns]
         if not charges_pool.empty and total_charges_value > 0:
-            st.dataframe(charges_pool[display_cols].style.format({"amount": "₦{:,.2f}"}), use_container_width=True)
+            
+            # Format display function highlighting rows matching retry criteria
+            def style_duplicate_rows(row):
+                return ['color: #ff4d4d;' if row['is_retry_duplicate'] else '' for _ in row]
+                
+            st.dataframe(
+                charges_pool[display_cols].style.apply(style_duplicate_rows, axis=1).format({"amount": "₦{:,.2f}"}), 
+                use_container_width=True
+            )
         else:
             st.info("No policy infractions documented in the active data partition slice.")
